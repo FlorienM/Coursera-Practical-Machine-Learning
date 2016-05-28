@@ -1,0 +1,68 @@
+---
+title: "Prediction model: how well is a particular activity done"
+date: "May 28, 2016"
+subtitle: Practical Machine Learning, course project
+---
+
+## Summary
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. 
+
+Using a training set a random forest model is fitted to the data, which is tested on a validation set. The out of sample error rate of 0.6% indicates the model will perform good on the testing set. 
+
+
+## Data Processing and Investigation
+```{r, warning=FALSE, message=FALSE, results = 'hide'}
+require(caret);
+set.seed(3333)
+testing<-read.csv("pml-testing.csv")
+training<-read.csv("pml-training.csv")
+
+# Inspect dataset
+dim(training)
+head(training)
+head(testing)
+identical(names(training[,1:ncol(training)-1]),names(testing[,1:ncol(testing)-1]))
+trainingtable<-table(training$classe)
+plot<-plot(training$classe, col = "orange", main = "Trainingset")
+text(plot, training$classe, labels = paste(round(trainingtable/sum(trainingtable)*100,1), "%"), pos = 3)
+```
+
+The provided testing and training dataset have equal column names, except for the classe column in the training set and the problem_id column in the testing set. 
+
+The dataset is further investigated and columns that will not add significant value to the model are removed frmo the dataset. 
+```{r}
+# Remove columns with more than 90% NA in testing set (normally you would remove first and then split the dataset)
+trainingsubs<-training[,colSums(is.na(testing))<.9*nrow(testing)]  
+
+# Remove columns that cannot predict 
+columns.remove<-c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window")
+trainingsubs<- subset(trainingsubs, select = !names(trainingsubs) %in% columns.remove)
+
+# Remove columns that are highly correlated
+correlationMatrix<-cor(trainingsubs[,1:ncol(trainingsubs)-1])
+highcor<-findCorrelation(correlationMatrix, cutoff=0.9)
+trainingsubs<-trainingsubs[,-highcor]
+```
+
+After cleaning up, dimensions of the training set are 19622 rows and 46 columns. This set is split into a training set (75%) and a validation set (25%). 
+
+## Model Building and Validation
+A random forest model with 5-fold cross-validation (dataset is large enough) is used to predict the classe variable. The random forest is used, because we still have quite a lot of variables that could be included in the model and 
+
+```{r,  warning=FALSE, message=FALSE, cache = TRUE}
+# Create validationset
+inTrain<-createDataPartition(y=trainingsubs$classe, p=0.75, list=FALSE)
+trainingset<-trainingsubs[inTrain,]
+validationset<-trainingsubs[-inTrain,]
+
+## Create random forest model with 5-fold cross-validation
+model<-train(classe~., data = trainingset, method = "rf", trControl=trainControl(method="cv", number=5))
+predval<-predict(model,validationset)
+predtest<-predict(model,testing)
+confMatrix<-confusionMatrix(predval, validationset$classe)
+print(confMatrix)
+```
+The model is tested on the validation set and this results in an expected out of sample error rate of only 0.6%.
+
+## Conclusion
+A random forest model seems to be able to predict accurately how well a certain activity is done. Out of sample error rate might even be smaller when using another model, but this should be further examined in future research.
